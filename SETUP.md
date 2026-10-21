@@ -36,12 +36,12 @@ character set and viewport tags itself. Your host won't, so build the hostable c
 ./build.sh
 ```
 
-That writes `site/index.html`. Run it again whenever you change `index.html`.
+That writes `docs/index.html`, which GitHub Pages serves. Run it again whenever you change `index.html`.
 
 Any static host works, because there is no server. Two easy options:
 
-- **Netlify Drop:** go to app.netlify.com/drop and drag the `site` folder onto the page. You get a URL straight away and can rename it in site settings.
-- **GitHub Pages:** push the `site` folder's contents to a public repo, then Settings → Pages → deploy from the main branch.
+- **Netlify Drop:** go to app.netlify.com/drop and drag the `docs` folder onto the page. You get a URL straight away and can rename it in site settings.
+- **GitHub Pages:** push the `docs` folder's contents to a public repo, then Settings → Pages → deploy from the main branch.
 
 **How it's set up now:** the site is live at https://xray.ausiejus.lt, served by GitHub Pages
 from this repo's `docs/` folder. In Cloudflare, `xray` has four proxied A records pointing at
