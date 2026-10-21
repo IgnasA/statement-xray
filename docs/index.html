@@ -374,10 +374,11 @@ const Core = (() => {
 
   // files: [{name, text}] -> report
   function analyze(files) {
-    const seen = new Set();
+    const seen = new Map(); // row -> most copies of it found in any one file
     const problems = [];
     const rowsByCur = {};
     let fileCount = 0;
+    const nRows = n => (n === 1 ? "1 row" : `${n} rows`);
     for (const f of files) {
       const rows = parseCSV(f.text);
       if (!rows.length) { problems.push(`${f.name} is empty.`); continue; }
@@ -386,25 +387,43 @@ const Core = (() => {
         problems.push(`${f.name} doesn't look like an Etsy monthly statement (no Date, Type and Net columns).`);
         continue;
       }
+      if (rows.length === 1) { problems.push(`${f.name} has no transactions in it.`); continue; }
       fileCount++;
+      let width = rows[0].length;
+      while (width > 1 && rows[0][width - 1].trim() === "") width--;
+      const inFile = new Map();
+      let bad = 0, undated = 0;
       for (const r of rows.slice(1)) {
-        const key = r.join("\u0001");
-        if (seen.has(key)) continue; // same row from a file added twice
-        seen.add(key);
+        // Missing or extra filled-in fields mean the columns have shifted (an unquoted comma, a cut-off line).
+        if (r.length < width || r.slice(width).some(v => v.trim() !== "")) { bad++; continue; }
+        // Identical rows within one file are real (e.g. one listing renewed three times), but a row
+        // that also appears in another file (the same statement added twice) is only counted once.
+        const key = r.slice(0, width).join("\u0001");
+        const copies = (inFile.get(key) || 0) + 1;
+        inFile.set(key, copies);
+        if (copies <= (seen.get(key) || 0)) continue;
+        seen.set(key, copies);
         const get = i => (i >= 0 ? r[i] : "");
         const amount = money(get(col.amount));
         const fees = money(get(col.fees));
         const netRaw = get(col.net);
         const net = col.net >= 0 && !/^\s*-*\s*$/.test(netRaw) ? money(netRaw) : amount + fees;
         const cur = (get(col.currency) || "").trim().toUpperCase() || "USD";
+        const month = monthKey(get(col.date));
+        if (!month) undated++;
         (rowsByCur[cur] = rowsByCur[cur] || []).push({
-          month: monthKey(get(col.date)), type: get(col.type), title: get(col.title), info: get(col.info),
+          month, type: get(col.type), title: get(col.title), info: get(col.info),
           amount, fees, net, kind: classify(get(col.type), get(col.title)),
         });
       }
+      if (bad) problems.push(`${nRows(bad)} in ${f.name} didn't have the right number of columns and ${bad === 1 ? "was" : "were"} left out.`);
+      if (undated) problems.push(`${nRows(undated)} in ${f.name} had a date that couldn't be read. ${undated === 1 ? "It is" : "They are"} in the totals but not the monthly chart.`);
     }
     const curs = Object.keys(rowsByCur).sort((a, b) => rowsByCur[b].length - rowsByCur[a].length);
-    if (!curs.length) return { ok: false, problems };
+    if (!curs.length) {
+      if (!problems.length) problems.push(files.length ? "No transactions were found in those files." : "No files were loaded.");
+      return { ok: false, problems };
+    }
     const currency = curs[0];
     if (curs.length > 1) problems.push(`Rows in ${curs.slice(1).join(", ")} were left out; this report is in ${currency}.`);
     const rows = rowsByCur[currency];
