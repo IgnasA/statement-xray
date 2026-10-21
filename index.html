@@ -510,7 +510,7 @@ const $ = id => document.getElementById(id);
 let fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" });
 const money = n => fmt.format(n);
 const pct = n => (isFinite(n) ? (n * 100).toFixed(1) + "%" : "–");
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const monthName = (k, opts = { month: "long", year: "numeric" }) => { const [y, m] = k.split("-"); return new Date(+y, +m - 1, 1).toLocaleString(undefined, opts); };
 const shortMonth = k => monthName(k, { month: "short" });
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
