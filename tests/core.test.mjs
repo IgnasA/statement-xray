@@ -91,3 +91,51 @@ test("verifyLicense handles Gumroad's answers", async () => {
   const offline = await Core.verifyLicense("k", opts(async () => { throw new Error("offline"); }));
   assert.deepEqual([offline.ok, offline.final], [false, false]);
 });
+
+const readCSV = text => plain(Core.parseCSV(text));
+const columnSums = rows => {
+  const at = name => rows.find(r => r[0] === name).slice(1).map(Number);
+  return { at, kept: at("Kept") };
+};
+
+test("monthlyCSV has a column per month and a total that matches the report", () => {
+  const rep = Core.analyze([{ name: "example.csv", text: Core.sample() }]);
+  const rows = readCSV(Core.monthlyCSV(rep));
+  assert.deepEqual(rows[0], ["Category (USD)", "2026-08", "2026-09", "2026-10", "Total"]);
+  const { at, kept } = columnSums(rows);
+  near(kept[3], rep.totals.kept);
+  near(at("Sales")[3], rep.totals.gross);
+  near(at("Total deducted by Etsy")[3], -rep.totals.taken);
+  // Months add up to the total on every line
+  for (const r of rows.slice(1)) near(r.slice(1, 4).map(Number).reduce((a, b) => a + b, 0), +r[4]);
+  // Each column adds up to what was kept
+  for (let i = 0; i < 4; i++) {
+    const parts = ["Sales", "Refunds", ...Core.CATS.map(c => c.name), "Other adjustments"].reduce((s, n) => s + at(n)[i], 0);
+    near(parts, kept[i]);
+  }
+});
+
+test("monthlyCSV keeps undated rows and adjustments in their own places", () => {
+  const rep = Core.analyze([{ name: "s.csv", text: statement(
+    '"August 2, 2026",Sale,Payment for Order #1234567,Order #1234567,USD,$30.00,-$1.15,$28.85,--',
+    '"August 20, 2026",Adjustment,Case resolved,,USD,--,--,$5.00,--',
+    'soon,Fee,Listing fee,Listing #99,USD,--,-$0.20,-$0.20,--',
+  ) }]);
+  const rows = readCSV(Core.monthlyCSV(rep));
+  assert.deepEqual(rows[0], ["Category (USD)", "2026-08", "Undated", "Total"]);
+  const { at, kept } = columnSums(rows);
+  assert.deepEqual(at("Other adjustments"), [5, 0, 5]);
+  assert.deepEqual(at("Listing fees"), [0, -0.2, -0.2]);
+  assert.deepEqual(kept, [33.85, -0.2, 33.65]);
+  assert.ok(!/-0\.00/.test(Core.monthlyCSV(rep)), "no negative zeros");
+});
+
+test("monthlyCSV uses the report's currency", () => {
+  const rep = Core.analyze([{ name: "s.csv", text: statement('"3 Aug 2026",Sale,Payment for Order #1234567,Order #1234567,EUR,"€30,00","-€1,15","€28,85",--') }]);
+  assert.equal(readCSV(Core.monthlyCSV(rep))[0][0], "Category (EUR)");
+});
+
+test("docs/index.html is the current build of index.html", () => {
+  const built = readFileSync(new URL("../docs/index.html", import.meta.url), "utf8");
+  assert.ok(built.includes(html), "run ./build.sh and commit docs/index.html");
+});
