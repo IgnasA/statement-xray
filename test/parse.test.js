@@ -162,8 +162,9 @@ test("decode: UTF-16 with BOM (Excel's 'Unicode text')", () => {
 });
 
 test("decode: falls back to Windows-1252 for files re-saved by Excel", () => {
-  // "Caf\xe9" and "\x80" (euro sign in cp1252) are not valid UTF-8
-  assert.equal(Core.decode(new Uint8Array([0x43, 0x61, 0x66, 0xe9, 0x2c, 0x80, 0x32])), "Café,€2");
+  // "Caf\xe9,\xa32" is not valid UTF-8. (Bytes 0x80-0x9f, such as the euro sign, are left out:
+  // browsers map them per the WHATWG table, but Node 22 decodes windows-1252 as Latin-1.)
+  assert.equal(Core.decode(new Uint8Array([0x43, 0x61, 0x66, 0xe9, 0x2c, 0xa3, 0x32])), "Café,£2");
 });
 
 test("decode: accepts an ArrayBuffer", () => {

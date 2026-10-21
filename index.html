@@ -249,16 +249,38 @@ const Core = (() => {
     { key: "vat", name: "VAT on fees", note: "Tax Etsy adds to its own fees", color: "var(--s8)" },
   ];
 
+  // File bytes -> text. Etsy writes UTF-8; Excel can re-save a statement as UTF-16 or Windows-1252.
+  function decode(buf) {
+    const b = ArrayBuffer.isView(buf) ? new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) : new Uint8Array(buf);
+    if (b[0] === 0xff && b[1] === 0xfe) return new TextDecoder("utf-16le").decode(b.subarray(2));
+    if (b[0] === 0xfe && b[1] === 0xff) return new TextDecoder("utf-16be").decode(b.subarray(2));
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(b); }
+    catch { return new TextDecoder("windows-1252").decode(b); }
+  }
+
+  // Etsy separates with commas; Excel re-saves with semicolons or tabs in some locales. The header line decides.
+  function delimiter(text) {
+    const n = { ",": 0, ";": 0, "\t": 0 }; let q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (c === '"') q = !q;
+      else if (!q && (c === "\n" || c === "\r")) { if (n[","] + n[";"] + n["\t"]) break; }
+      else if (!q && c in n) n[c]++;
+    }
+    return n[";"] > n[","] && n[";"] >= n["\t"] ? ";" : n["\t"] > n[","] ? "\t" : ",";
+  }
+
   function parseCSV(text) {
     const rows = []; let row = []; let field = ""; let q = false;
     text = text.replace(/^﻿/, "");
+    const sep = delimiter(text);
     for (let i = 0; i < text.length; i++) {
       const c = text[i];
       if (q) {
         if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; }
         else field += c;
       } else if (c === '"') q = true;
-      else if (c === ",") { row.push(field); field = ""; }
+      else if (c === sep) { row.push(field); field = ""; }
       else if (c === "\n" || c === "\r") {
         if (c === "\r" && text[i + 1] === "\n") i++;
         row.push(field); field = "";
@@ -505,7 +527,7 @@ const Core = (() => {
     return { ok: true, final: true, message: "Unlocked. Thanks for buying!" };
   }
 
-  return { CATS, parseCSV, money, monthKey, classify, analyze, sample, verifyLicense };
+  return { CATS, decode, parseCSV, money, monthKey, classify, analyze, sample, verifyLicense };
 })();
 </script>
 
