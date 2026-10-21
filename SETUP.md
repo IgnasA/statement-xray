@@ -7,7 +7,7 @@ copy-to-bookkeeping button unlock with a Gumroad license key.
 ## 1. Create the product on Gumroad
 
 1. Sign up at gumroad.com and create a new **Digital product**.
-2. Name it "Statement X-Ray: full Etsy fee report" (or similar) and set the price. The page says $12.
+2. Name it "Statement X-Ray: full Etsy fee report" (or similar) and set the price. The page says $9.
 3. In the product's settings, turn on **Generate a unique license key per sale**.
 4. Copy the **product ID** shown next to that license key setting.
 5. In the product content, write something like:
@@ -22,7 +22,7 @@ Open `index.html` and find the `SALE` block near the top of the first `<script>`
 const SALE = {
   productId: "",                                              // paste the product ID here
   buyUrl: "https://YOUR-NAME.gumroad.com/l/statement-xray",  // your product page link
-  price: "$12",
+  price: "$9",
   maxDevices: 5,
 };
 ```
@@ -67,7 +67,7 @@ Gumroad, so keys can't be checked there.
 - One key works on up to `maxDevices` browsers. To reset a buyer, open the sale in Gumroad
   and reset its license uses.
 - The lock runs in the visitor's browser, so a technical person could get around it with
-  developer tools. For a $12 tool aimed at shop owners that's an acceptable trade for having
+  developer tools. For a $9 tool aimed at shop owners that's an acceptable trade for having
   no server to run.
 
 ## Listing screenshots
