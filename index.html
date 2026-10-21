@@ -288,7 +288,7 @@ const Core = (() => {
 
   const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
   function monthKey(s) {
-    s = String(s || "").trim();
+    s = String(s || "").trim().slice(0, 64); // dates are short; bounding the length keeps the regexes below fast
     let m = s.match(/^(\d{4})-(\d{1,2})/);
     if (m) return `${m[1]}-${m[2].padStart(2, "0")}`;
     m = s.match(/([A-Za-z]{3})[A-Za-z]*\.?\s+\d{1,2},?\s+(\d{4})/) || s.match(/\d{1,2}\s+([A-Za-z]{3})[A-Za-z]*\.?,?\s+(\d{4})/);
