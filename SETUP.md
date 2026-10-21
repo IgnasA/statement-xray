@@ -43,6 +43,12 @@ Any static host works, because there is no server. Two easy options:
 - **Netlify Drop:** go to app.netlify.com/drop and drag the `site` folder onto the page. You get a URL straight away and can rename it in site settings.
 - **GitHub Pages:** push the `site` folder's contents to a public repo, then Settings → Pages → deploy from the main branch.
 
+**How it's set up now:** the site is live at https://xray.ausiejus.lt, served by GitHub Pages
+from this repo's `docs/` folder. In Cloudflare, `xray` has four proxied A records pointing at
+GitHub Pages (185.199.108–111.153), next to Email Routing's MX and TXT records. Cloudflare
+provides the HTTPS certificate, so GitHub's own "Enforce HTTPS" stays unavailable. Instead,
+the page built by `build.sh` sends `http://` visitors to `https://` itself.
+
 The unlock only works on your hosted copy. The claude.ai preview blocks requests to
 Gumroad, so keys can't be checked there.
 
