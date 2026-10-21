@@ -625,7 +625,7 @@ function statusText(rep, mode) {
   if (mode === "preview") return "A made-up shop, shown the way a buyer sees it before paying.";
   const span = rep.months.length ? (rep.months.length === 1 ? monthName(rep.months[0].key) : `${monthName(rep.months[0].key)} to ${monthName(rep.months[rep.months.length - 1].key)}`) : "";
   const check = rep.check ? "Totals match your statements' Net column." : `Totals differ from your statements' Net column by ${money(rep.totals.statementNet - rep.totals.kept)}.`;
-  return `${plural(rep.fileCount, "statement")}, ${span}, ${plural(rep.counts.sales, "order")}. ${check}`;
+  return `${[plural(rep.fileCount, "statement"), span, plural(rep.counts.sales, "order")].filter(Boolean).join(", ")}. ${check}`;
 }
 
 function render(rep, mode) {
@@ -637,7 +637,11 @@ function render(rep, mode) {
   $("sampleBtn").hidden = mode === "sample";
   if (!rep.ok) { $("report").hidden = true; return; }
   $("report").hidden = false;
-  try { fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: rep.currency }); } catch { /* unknown currency code */ }
+  try { fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: rep.currency }); }
+  catch { // not an ISO currency code: plain numbers, so the last report's symbol isn't reused
+    const plainFmt = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    fmt = { format: n => `${plainFmt.format(n)} ${rep.currency}` };
+  }
   $("status").textContent = statusText(rep, mode);
 
   const T = rep.totals;
@@ -728,10 +732,23 @@ function drawChart(rep) {
   });
 }
 
+function showMsg(text) { $("msg").hidden = false; $("msg").textContent = text; }
+
 async function loadFiles(list) {
-  const files = await Promise.all([...list].filter(f => /\.csv$/i.test(f.name) || f.type === "text/csv").map(f => f.text().then(text => ({ name: f.name, text }))));
-  if (!files.length) { $("msg").hidden = false; $("msg").textContent = "Those weren't CSV files. Download the CSV version of each monthly statement from Etsy."; return; }
-  render(Core.analyze(files), "real");
+  list = [...(list || [])];
+  const csvs = list.filter(f => /\.csv$/i.test(f.name) || f.type === "text/csv");
+  if (!csvs.length) { if (list.length) showMsg("Those weren't CSV files. Download the CSV version of each monthly statement from Etsy."); return; }
+  let rep;
+  try {
+    const files = await Promise.all(csvs.map(f => f.arrayBuffer().then(buf => ({ name: f.name, text: Core.decode(buf) }))));
+    rep = Core.analyze(files);
+  } catch (err) {
+    console.error(err);
+    showMsg("Those files couldn't be read. Download the statements from Etsy again and load the CSV files straight from your computer.");
+    return;
+  }
+  rep.problems.unshift(...list.filter(f => !csvs.includes(f)).map(f => `${f.name} was left out because it isn't a CSV file.`));
+  render(rep, "real");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 const example = () => Core.analyze([{ name: "example.csv", text: Core.sample() }]);
@@ -739,14 +756,15 @@ function loadSample() { render(example(), "sample"); }
 // Open the page with #paywall to see what buyers see before unlocking (handy for listing screenshots).
 function loadLockedPreview() { render(example(), "preview"); }
 
-$("file").addEventListener("change", e => loadFiles(e.target.files));
+// Clear the input so picking the same file again (say, after going back to the example) still loads it.
+$("file").addEventListener("change", e => { const picked = [...e.target.files]; e.target.value = ""; loadFiles(picked); });
 $("fileLabel").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
 $("sampleBtn").addEventListener("click", loadSample);
 let dragDepth = 0;
 document.addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; document.body.classList.add("dropping"); });
 document.addEventListener("dragover", e => e.preventDefault());
 document.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dropping"); } });
-document.addEventListener("drop", e => { e.preventDefault(); dragDepth = 0; document.body.classList.remove("dropping"); loadFiles(e.dataTransfer.files); });
+document.addEventListener("drop", e => { e.preventDefault(); dragDepth = 0; document.body.classList.remove("dropping"); loadFiles(e.dataTransfer && e.dataTransfer.files); });
 
 $("copyBtn").addEventListener("click", () => {
   if (!current || !current.ok) return;
