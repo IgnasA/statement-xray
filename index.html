@@ -675,8 +675,13 @@ function drawChart(rep) {
   });
 }
 
+// Monthly statements are a few hundred KB at most; anything far bigger would only freeze the tab.
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
 async function loadFiles(list) {
-  const files = await Promise.all([...list].filter(f => /\.csv$/i.test(f.name) || f.type === "text/csv").map(f => f.text().then(text => ({ name: f.name, text }))));
+  const csvs = [...list].filter(f => /\.csv$/i.test(f.name) || f.type === "text/csv");
+  const tooBig = csvs.filter(f => f.size > MAX_FILE_BYTES);
+  if (tooBig.length) { $("msg").hidden = false; $("msg").textContent = `${tooBig.map(f => f.name).join(", ")} ${tooBig.length === 1 ? "is" : "are"} too large to be an Etsy monthly statement.`; return; }
+  const files = await Promise.all(csvs.map(f => f.text().then(text => ({ name: f.name, text }))));
   if (!files.length) { $("msg").hidden = false; $("msg").textContent = "Those weren't CSV files. Download the CSV version of each monthly statement from Etsy."; return; }
   render(Core.analyze(files), "real");
   window.scrollTo({ top: 0, behavior: "smooth" });
