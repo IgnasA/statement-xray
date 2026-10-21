@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Statement X-Ray</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="See exactly where your Etsy money went. Load your monthly statement CSVs; everything stays on your computer.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;700;800&display=swap">
+<style>
+/* Layout: one 720px column that reads like an accountant's note. The answer comes first as a sentence and one bar, then a ledger. Ink for money kept, red for money deducted. */
+:root {
+  --paper: #ffffff;
+  --ink: #1b1b1a;
+  --ink-2: #55534f;
+  --muted: #8a8780;
+  --rule: #e7e5e0;
+  --red: #c23a22;
+  --red-soft: #f7e4df;
+  --refund: #bdb9b0;
+  --font: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #161514; --ink: #ecebe7; --ink-2: #b6b3ac; --muted: #85827b; --rule: #2d2b28;
+    --red: #e86a50; --red-soft: #3b211b; --refund: #5c5952;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #161514; --ink: #ecebe7; --ink-2: #b6b3ac; --muted: #85827b; --rule: #2d2b28;
+  --red: #e86a50; --red-soft: #3b211b; --refund: #5c5952;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--paper); color: var(--ink); font: 16px/1.55 var(--font);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 72px;
+}
+.page { max-width: 720px; margin: 0 auto; display: grid; gap: 56px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+h2 { font-size: 1.375rem; font-weight: 700; letter-spacing: -0.01em; }
+p { margin: 0; }
+b, strong { font-weight: 700; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* Top */
+.top { display: grid; gap: 18px; }
+.mast { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.wordmark { font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; }
+.wordmark span { color: var(--muted); font-weight: 400; }
+.load { display: flex; gap: 10px 16px; align-items: center; flex-wrap: wrap; padding: 14px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.load p { flex: 1 1 280px; color: var(--ink-2); font-size: 15px; }
+.btn {
+  display: inline-block; font-weight: 700; font-size: 15px; padding: 10px 16px; border-radius: 4px; cursor: pointer;
+  background: var(--ink); color: var(--paper); border: 1px solid var(--ink); text-decoration: none; text-align: center;
+}
+.btn.plain { background: transparent; color: var(--ink); }
+.linkbtn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.msg { color: var(--red); font-size: 15px; }
+
+/* Answer */
+.answer { display: grid; gap: 18px; }
+.answer h1 { font-size: clamp(1.9rem, 5.4vw, 2.9rem); line-height: 1.12; font-weight: 800; letter-spacing: -0.025em; }
+.answer h1 .kept { white-space: nowrap; }
+.answer .sub { color: var(--ink-2); max-width: 60ch; }
+.answer .sub .red { color: var(--red); font-weight: 700; }
+.moneybar { display: flex; gap: 2px; height: 28px; }
+.moneybar span { display: block; min-width: 2px; }
+.moneybar span:first-child { border-radius: 3px 0 0 3px; }
+.moneybar span:last-child { border-radius: 0 3px 3px 0; }
+.key { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 14px; color: var(--ink-2); }
+.key i { display: inline-block; width: 10px; height: 10px; margin-right: 7px; border-radius: 2px; vertical-align: 0; }
+.status { font-size: 14px; color: var(--muted); }
+
+/* Ledger */
+section { display: grid; gap: 16px; }
+.ledger { border-top: 2px solid var(--ink); }
+.lrow { display: grid; grid-template-columns: minmax(0, 1fr) 140px 96px 56px; gap: 16px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--rule); }
+.lrow .what small { display: block; color: var(--muted); font-size: 13px; }
+.lrow .bar { height: 6px; background: var(--red-soft); border-radius: 3px; overflow: hidden; }
+.lrow .bar span { display: block; height: 100%; background: var(--red); border-radius: 3px; }
+.lrow .amt { text-align: right; font-weight: 500; }
+.lrow .pct { text-align: right; color: var(--muted); font-size: 14px; }
+.lrow.total { border-bottom: 0; font-weight: 700; }
+.lrow.total .amt { color: var(--red); font-weight: 700; }
+@media (max-width: 560px) {
+  .lrow { grid-template-columns: minmax(0, 1fr) 84px 48px; gap: 10px; }
+  .lrow .bar { display: none; }
+}
+
+/* Notes */
+.notes { margin: 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+.notes li { padding-left: 18px; position: relative; color: var(--ink-2); max-width: 62ch; }
+.notes li::before { content: ""; position: absolute; left: 0; top: .62em; width: 7px; height: 7px; background: var(--red); border-radius: 50%; }
+.notes li b { color: var(--ink); }
+
+/* Monthly */
+.chart-wrap { position: relative; overflow-x: auto; }
+.chart-wrap svg { display: block; width: 100%; min-width: 400px; height: auto; }
+.chart-wrap text { fill: var(--muted); font: 12px var(--font); }
+.chart-wrap text.val { fill: var(--ink); font-weight: 700; }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--paper); border-radius: 4px; padding: 10px 12px; font-size: 13px; min-width: 200px; }
+.tip .row { display: flex; justify-content: space-between; gap: 14px; }
+.tip .t { font-weight: 700; margin-bottom: 4px; }
+
+/* Orders */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; min-width: 540px; border-top: 2px solid var(--ink); }
+th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th:first-child, td:first-child { padding-left: 0; }
+th:last-child, td:last-child { padding-right: 0; }
+th { font-size: 13px; font-weight: 500; color: var(--muted); }
+td.r, th.r { text-align: right; }
+td .item { display: block; color: var(--muted); font-size: 13px; max-width: 30ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td .flag { color: var(--red); font-size: 13px; font-weight: 500; margin-left: 6px; }
+td .flag.quiet { color: var(--muted); }
+td.taken { color: var(--red); font-weight: 700; }
+
+/* Paywall */
+.paid { display: grid; gap: 32px; }
+.paid-inner { display: grid; gap: 56px; }
+.paid.locked .paid-inner {
+  max-height: 380px; overflow: hidden; filter: blur(3px); pointer-events: none; user-select: none;
+  -webkit-mask-image: linear-gradient(#000 25%, transparent); mask-image: linear-gradient(#000 25%, transparent);
+}
+.unlock { border: 2px solid var(--ink); border-radius: 6px; padding: 24px; display: grid; gap: 14px; }
+.unlock p { color: var(--ink-2); max-width: 58ch; }
+.unlock .buyrow { display: flex; gap: 10px 16px; align-items: center; flex-wrap: wrap; }
+.unlock .buyrow small { color: var(--muted); font-size: 13px; }
+.keyrow { display: grid; gap: 8px; padding-top: 14px; border-top: 1px solid var(--rule); font-size: 14px; color: var(--ink-2); }
+.keyinput { display: flex; gap: 8px; flex-wrap: wrap; }
+.keyinput input {
+  flex: 1 1 240px; min-width: 0; padding: 9px 10px; border-radius: 4px; font-size: 14px; letter-spacing: .02em;
+  border: 1px solid var(--muted); background: var(--paper);
+}
+.keymsg { min-height: 1.3em; font-size: 14px; }
+.keymsg.bad { color: var(--red); }
+.keymsg.good { color: var(--ink); font-weight: 700; }
+
+/* Bottom */
+details summary { cursor: pointer; font-weight: 700; }
+details ol { margin: 10px 0 0; padding-left: 20px; color: var(--ink-2); display: grid; gap: 6px; }
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule); padding-top: 14px; display: grid; gap: 6px; }
+
+.dropping::after {
+  content: "Drop your statement CSVs"; position: fixed; inset: 12px; display: grid; place-items: center;
+  border: 2px solid var(--ink); border-radius: 8px; background: var(--paper); font-weight: 800; font-size: 1.5rem; z-index: 20; opacity: .96;
+}
+</style>
+
+<div class="page">
+  <div class="top">
+    <div class="mast">
+      <div class="wordmark">Statement X-Ray <span>for Etsy sellers</span></div>
+      <a class="linkbtn" href="#how" style="font-size:14px;color:var(--ink-2)">Where do I find my statements?</a>
+    </div>
+    <div class="load">
+      <p id="status">You're looking at a made-up shop. Load your monthly statement CSVs to see your own numbers. They stay on your computer.</p>
+      <label class="btn" for="file" tabindex="0" id="fileLabel">Load statements</label>
+      <input type="file" id="file" accept=".csv,text/csv" multiple hidden>
+      <button class="linkbtn" id="sampleBtn" type="button" hidden>Back to the example</button>
+    </div>
+    <p class="msg" id="msg" hidden></p>
+  </div>
+
+  <div id="report" class="page">
+    <div class="answer" id="answer"></div>
+
+    <section>
+      <h2 id="ledgerTitle">Where it went</h2>
+      <div class="ledger" id="breakdown"></div>
+    </section>
+
+    <div class="paid" id="paid">
+      <div class="paid-inner" id="paidInner">
+        <section>
+          <h2>Things to look at</h2>
+          <ul class="notes" id="insights"></ul>
+        </section>
+
+        <section>
+          <h2>Deducted each month</h2>
+          <div class="chart-wrap" id="chartWrap"><svg id="chart" role="img" aria-label="Money deducted by Etsy each month"></svg><div class="tip" id="tip" hidden></div></div>
+        </section>
+
+        <section>
+          <h2>Orders where Etsy took the biggest share</h2>
+          <div class="table-wrap"><table id="orders"></table></div>
+        </section>
+
+        <div><button class="btn plain" id="copyBtn" type="button">Copy totals for my bookkeeping</button> <span class="status" id="copyMsg"></span></div>
+      </div>
+
+      <form class="unlock" id="unlock" hidden>
+        <h2>Get the rest of your report</h2>
+        <p id="teaser"></p>
+        <div class="buyrow">
+          <a class="btn" id="buyLink" href="#" target="_blank" rel="noopener">Buy the full report, <span id="price"></span></a>
+          <small>One payment through Gumroad. No account or subscription.</small>
+        </div>
+        <div class="keyrow">
+          <label for="licenseKey">Already paid? Paste the license key from your Gumroad receipt.</label>
+          <div class="keyinput">
+            <input id="licenseKey" type="text" autocomplete="off" spellcheck="false" placeholder="License key">
+            <button class="btn plain" id="unlockBtn" type="submit">Unlock</button>
+          </div>
+          <p class="keymsg" id="keyMsg" role="status"></p>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <details id="how">
+    <summary>Where do I find my statements?</summary>
+    <ol>
+      <li>Open Etsy on a computer and go to Shop Manager.</li>
+      <li>Choose Finances, then Monthly statements.</li>
+      <li>Pick a month and download its CSV. Repeat for each month you want to see.</li>
+      <li>Load all the files here at once. Months are combined, and a file added twice is only counted once.</li>
+    </ol>
+  </details>
+
+  <footer>
+    <p class="license" id="licenseStatus" hidden>The full report is unlocked in this browser. <button class="linkbtn" id="forgetKey" type="button">Remove key</button></p>
+    <p>Not affiliated with Etsy. Figures come from your own statement files and are a guide, not tax advice. Sales tax and VAT that Etsy collects from buyers are left out, because that money was never yours.</p>
+  </footer>
+</div>
+
+<script id="core">
+// Fill these in after creating the product on Gumroad (see SETUP.md).
+const SALE = {
+  productId: "",                                              // Gumroad product ID (Product → Content → License key)
+  buyUrl: "https://YOUR-NAME.gumroad.com/l/statement-xray",  // your product page
+  price: "$12",
+  maxDevices: 5,                                              // one key works on this many browsers
+};
+
+const Core = (() => {
+  const CATS = [
+    { key: "transaction", name: "Transaction fees", note: "6.5% of item price and shipping", color: "var(--s1)" },
+    { key: "processing", name: "Payment processing", note: "Charged on each payment", color: "var(--s2)" },
+    { key: "listing", name: "Listing fees", note: "Includes auto-renewals after a sale", color: "var(--s3)" },
+    { key: "offsite", name: "Offsite Ads", note: "Charged when an ad click leads to a sale", color: "var(--s4)" },
+    { key: "etsyAds", name: "Etsy Ads", note: "Ads you chose to run", color: "var(--s5)" },
+    { key: "labels", name: "Shipping labels", note: "Postage bought through Etsy", color: "var(--s6)" },
+    { key: "other", name: "Other Etsy fees", note: "Regulatory, currency conversion, subscriptions", color: "var(--s7)" },
+    { key: "vat", name: "VAT on fees", note: "Tax Etsy adds to its own fees", color: "var(--s8)" },
+  ];
+
+  function parseCSV(text) {
+    const rows = []; let row = []; let field = ""; let q = false;
+    text = text.replace(/^﻿/, "");
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) {
+        if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; }
+        else field += c;
+      } else if (c === '"') q = true;
+      else if (c === ",") { row.push(field); field = ""; }
+      else if (c === "\n" || c === "\r") {
+        if (c === "\r" && text[i + 1] === "\n") i++;
+        row.push(field); field = "";
+        if (row.some(v => v.trim() !== "")) rows.push(row);
+        row = [];
+      } else field += c;
+    }
+    row.push(field);
+    if (row.some(v => v.trim() !== "")) rows.push(row);
+    return rows;
+  }
+
+  // "$1,234.56", "-€2.00", "(1.20)", "--", "1.234,56 €" -> number
+  function money(s) {
+    if (s == null) return 0;
+    s = String(s).trim();
+    if (!s || /^-+$/.test(s)) return 0;
+    const neg = /^-|^\(|\)$|-$/.test(s) || /^[^\d]*-/.test(s);
+    let d = s.replace(/[^\d.,]/g, "");
+    if (!d) return 0;
+    if (/,\d{1,2}$/.test(d)) d = d.replace(/\./g, "").replace(",", ".");
+    else d = d.replace(/,/g, "");
+    const n = parseFloat(d);
+    if (!isFinite(n)) return 0;
+    return neg ? -n : n;
+  }
+
+  const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+  function monthKey(s) {
+    s = String(s || "").trim();
+    let m = s.match(/^(\d{4})-(\d{1,2})/);
+    if (m) return `${m[1]}-${m[2].padStart(2, "0")}`;
+    m = s.match(/([A-Za-z]{3})[A-Za-z]*\.?\s+\d{1,2},?\s+(\d{4})/) || s.match(/\d{1,2}\s+([A-Za-z]{3})[A-Za-z]*\.?,?\s+(\d{4})/);
+    if (m && MONTHS[m[1].toLowerCase()] != null) return `${m[2]}-${String(MONTHS[m[1].toLowerCase()] + 1).padStart(2, "0")}`;
+    m = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})$/);
+    if (m) {
+      const y = m[3].length === 2 ? "20" + m[3] : m[3];
+      const a = +m[1], b = +m[2];
+      const month = a > 12 ? b : a; // US order unless the first part can't be a month
+      return `${y}-${String(month).padStart(2, "0")}`;
+    }
+    return null;
+  }
+
+  const norm = h => String(h).toLowerCase().replace(/[^a-z]/g, "");
+  function findColumns(header) {
+    const h = header.map(norm);
+    const pick = (...names) => { for (const n of names) { const i = h.indexOf(n); if (i >= 0) return i; } return -1; };
+    return {
+      date: pick("date", "transactiondate"),
+      type: pick("type", "transactiontype"),
+      title: pick("title", "description"),
+      info: pick("info", "details", "reference"),
+      currency: pick("currency"),
+      amount: pick("amount", "gross"),
+      fees: pick("feestaxes", "feesandtaxes", "fees"),
+      net: pick("net"),
+    };
+  }
+
+  function classify(type, title) {
+    const t = norm(type), ti = String(title || "").toLowerCase();
+    if (t === "deposit" || /sent to your bank|deposit to|bank account/.test(ti)) return "deposit";
+    if (t === "vat" || /^vat\b|vat:/.test(ti)) return "vat";
+    if (t === "tax" || /sales tax|tax paid by buyer|tax collected/.test(ti)) return "tax";
+    if (t === "sale" || /^payment for order/.test(ti)) return "sale";
+    if (t === "refund" || /^refund/.test(ti)) return "refund";
+    if (/offsite ads/.test(ti)) return "offsite";
+    if (t === "marketing" || /etsy ads/.test(ti)) return "etsyAds";
+    if (/transaction fee/.test(ti)) return "transaction";
+    if (/processing fee/.test(ti)) return "processing";
+    if (/listing fee|auto-renew|renew/.test(ti)) return "listing";
+    if (t === "shipping" || /shipping label|postage|label/.test(ti)) return "labels";
+    if (t === "fee" || /fee|subscription|etsy plus|conversion/.test(ti)) return "other";
+    return "adjust";
+  }
+
+  const orderId = s => { const m = String(s || "").match(/order\s*#?\s*(\d{5,})/i); return m ? m[1] : null; };
+
+  // files: [{name, text}] -> report
+  function analyze(files) {
+    const seen = new Set();
+    const problems = [];
+    const rowsByCur = {};
+    let fileCount = 0;
+    for (const f of files) {
+      const rows = parseCSV(f.text);
+      if (!rows.length) { problems.push(`${f.name} is empty.`); continue; }
+      const col = findColumns(rows[0]);
+      if (col.type < 0 || col.date < 0 || (col.net < 0 && col.amount < 0)) {
+        problems.push(`${f.name} doesn't look like an Etsy monthly statement (no Date, Type and Net columns).`);
+        continue;
+      }
+      fileCount++;
+      for (const r of rows.slice(1)) {
+        const key = r.join("\u0001");
+        if (seen.has(key)) continue; // same row from a file added twice
+        seen.add(key);
+        const get = i => (i >= 0 ? r[i] : "");
+        const amount = money(get(col.amount));
+        const fees = money(get(col.fees));
+        const netRaw = get(col.net);
+        const net = col.net >= 0 && !/^\s*-*\s*$/.test(netRaw) ? money(netRaw) : amount + fees;
+        const cur = (get(col.currency) || "").trim().toUpperCase() || "USD";
+        (rowsByCur[cur] = rowsByCur[cur] || []).push({
+          month: monthKey(get(col.date)), type: get(col.type), title: get(col.title), info: get(col.info),
+          amount, fees, net, kind: classify(get(col.type), get(col.title)),
+        });
+      }
+    }
+    const curs = Object.keys(rowsByCur).sort((a, b) => rowsByCur[b].length - rowsByCur[a].length);
+    if (!curs.length) return { ok: false, problems };
+    const currency = curs[0];
+    if (curs.length > 1) problems.push(`Rows in ${curs.slice(1).join(", ")} were left out; this report is in ${currency}.`);
+    const rows = rowsByCur[currency];
+
+    const zero = () => Object.fromEntries(CATS.map(c => [c.key, 0]));
+    const t = { gross: 0, refunds: 0, adjust: 0, cats: zero(), statementNet: 0, rows: rows.length };
+    const months = {};
+    const orders = {};
+    const counts = { listing: 0, offsiteOrders: new Set(), sales: 0 };
+    const M = k => (months[k] = months[k] || { gross: 0, refunds: 0, cats: zero() });
+    const O = id => (orders[id] = orders[id] || { id, sale: 0, refund: 0, fees: 0, item: "", offsite: 0 });
+
+    for (const r of rows) {
+      if (r.kind === "deposit" || r.kind === "tax") continue;
+      t.statementNet += r.net;
+      const m = M(r.month || "unknown");
+      const id = orderId(r.info) || orderId(r.title);
+      if (r.kind === "sale") {
+        t.gross += r.amount; m.gross += r.amount; counts.sales++;
+        const proc = -r.fees;
+        t.cats.processing += proc; m.cats.processing += proc;
+        if (id) { const o = O(id); o.sale += r.amount; o.fees += proc; o.month = r.month; }
+      } else if (r.kind === "refund") {
+        t.refunds += -r.amount; m.refunds += -r.amount;
+        const credit = -r.fees; // fee refunds come back as a positive fee column
+        t.cats.processing += credit; m.cats.processing += credit;
+        if (id) { const o = O(id); o.refund += -r.amount; o.fees += credit; }
+      } else if (r.kind === "adjust") {
+        t.adjust += r.net;
+      } else {
+        const cost = -r.net;
+        t.cats[r.kind] += cost; m.cats[r.kind] += cost;
+        if (r.kind === "listing") counts.listing++;
+        if (id) {
+          const o = O(id); o.fees += cost;
+          if (r.kind === "offsite") { o.offsite += cost; counts.offsiteOrders.add(id); }
+          const im = String(r.title).match(/transaction fee:\s*(.+)/i);
+          if (im && !/^shipping$/i.test(im[1].trim())) o.item = im[1].trim();
+        }
+      }
+    }
+    const taken = CATS.reduce((s, c) => s + t.cats[c.key], 0);
+    const kept = t.gross - t.refunds - taken + t.adjust;
+    const orderList = Object.values(orders).filter(o => o.sale > 0)
+      .map(o => ({ ...o, share: o.fees / o.sale, kept: o.sale - o.refund - o.fees }))
+      .sort((a, b) => b.share - a.share);
+    const offsiteSales = orderList.filter(o => o.offsite > 0);
+    return {
+      ok: true, problems, currency, fileCount, totals: { ...t, taken, kept },
+      months: Object.keys(months).filter(k => k !== "unknown").sort().map(k => ({ key: k, ...months[k] })),
+      orders: orderList,
+      counts: { listing: counts.listing, sales: counts.sales, offsiteOrders: counts.offsiteOrders.size },
+      offsite: {
+        total: t.cats.offsite,
+        avgShare: offsiteSales.length ? offsiteSales.reduce((s, o) => s + o.offsite / o.sale, 0) / offsiteSales.length : 0,
+      },
+      check: Math.abs(t.statementNet - kept) < 0.02,
+    };
+  }
+
+  function sample() {
+    const items = ["Linen tea towel, botanical print", "Ceramic ring dish", "Hand-poured soy candle, cedar", "Pressed flower bookmark set", "Embroidered tote bag", "Brass stud earrings"];
+    const prices = [24, 18, 32, 12, 38, 45];
+    const months = [["August", 2026], ["September", 2026], ["October", 2026]];
+    const lines = ["Date,Type,Title,Info,Currency,Amount,Fees & Taxes,Net,Tax Details"];
+    const f = n => (n < 0 ? "-$" : "$") + Math.abs(n).toFixed(2);
+    let seed = 7, oid = 3480112200;
+    const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+    months.forEach(([mon, yr], mi) => {
+      const sales = 9 + mi * 3;
+      for (let i = 0; i < sales; i++) {
+        const day = 1 + Math.floor(rnd() * 27);
+        const d = `"${mon} ${day}, ${yr}"`;
+        const k = Math.floor(rnd() * items.length);
+        const qty = rnd() > 0.8 ? 2 : 1;
+        const ship = 5.5;
+        const total = prices[k] * qty + ship;
+        const id = ++oid;
+        const proc = +(total * 0.03 + 0.25).toFixed(2);
+        lines.push(`${d},Sale,Payment for Order #${id},Order #${id},USD,${f(total)},${f(-proc)},${f(total - proc)},--`);
+        const tx = +(prices[k] * qty * 0.065).toFixed(2), txs = +(ship * 0.065).toFixed(2);
+        lines.push(`${d},Fee,"Transaction fee: ${items[k]}",Order #${id},USD,--,${f(-tx)},${f(-tx)},--`);
+        lines.push(`${d},Fee,Transaction fee: Shipping,Order #${id},USD,--,${f(-txs)},${f(-txs)},--`);
+        lines.push(`${d},Fee,Listing fee,Listing #${150000000 + k},USD,--,-$0.20,-$0.20,--`);
+        lines.push(`${d},Shipping,USPS shipping label,Label #${id},USD,--,${f(-4.85)},${f(-4.85)},--`);
+        if (rnd() > 0.82) {
+          const ad = +(total * 0.15).toFixed(2);
+          const d2 = `"${mon} ${Math.min(28, day + 1)}, ${yr}"`;
+          lines.push(`${d2},Fee,Offsite Ads fee,Order #${id},USD,--,${f(-ad)},${f(-ad)},--`);
+        }
+        if (i === 4 && mi === 1) {
+          lines.push(`"${mon} ${Math.min(28, day + 3)}, ${yr}",Refund,Refund to buyer for Order #${id},Order #${id},USD,${f(-prices[k])},${f(+(prices[k] * 0.03).toFixed(2))},${f(-prices[k] + +(prices[k] * 0.03).toFixed(2))},--`);
+        }
+      }
+      for (let j = 0; j < 6; j++) lines.push(`"${mon} ${3 + j * 4}, ${yr}",Fee,Listing fee,Listing #${160000000 + j},USD,--,-$0.20,-$0.20,--`);
+      lines.push(`"${mon} 28, ${yr}",Marketing,Etsy Ads,Etsy Ads,USD,--,${f(-(14 + mi * 6))},${f(-(14 + mi * 6))},--`);
+      lines.push(`"${mon} 28, ${yr}",Fee,Regulatory operating fee,Order #${oid},USD,--,-$0.31,-$0.31,--`);
+      lines.push(`"${mon} 15, ${yr}",Deposit,$180.00 sent to your bank account,,USD,--,--,--,--`);
+      lines.push(`"${mon} 20, ${yr}",Tax,Sales tax paid by buyer,Order #${oid},USD,$2.40,-$2.40,$0.00,--`);
+    });
+    return lines.join("\n");
+  }
+
+  // Checks a key with Gumroad. Returns { ok, final, message }.
+  // final=false means Gumroad couldn't be reached, so a saved key should be kept.
+  async function verifyLicense(key, { productId, maxDevices, activate, fetchFn = fetch }) {
+    key = String(key || "").trim();
+    if (!key) return { ok: false, final: true, message: "Enter the license key from your Gumroad receipt." };
+    if (!productId) return { ok: false, final: false, message: "Unlocking isn't set up yet. The seller needs to add a Gumroad product ID." };
+    let res, data;
+    try {
+      res = await fetchFn("https://api.gumroad.com/v2/licenses/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ product_id: productId, license_key: key, increment_uses_count: activate ? "true" : "false" }).toString(),
+      });
+      data = await res.json();
+    } catch {
+      return { ok: false, final: false, message: "Couldn't reach Gumroad. Check your internet connection and try again." };
+    }
+    if (!data || !data.success) {
+      if (res && res.status >= 500) return { ok: false, final: false, message: "Gumroad isn't responding right now. Try again in a minute." };
+      return { ok: false, final: true, message: "That key wasn't recognised. Copy it exactly from your Gumroad receipt email." };
+    }
+    const p = data.purchase || {};
+    if (p.refunded || p.chargebacked || p.disputed) return { ok: false, final: true, message: "This purchase was refunded, so its key no longer unlocks the report." };
+    if (activate && maxDevices && data.uses > maxDevices) return { ok: false, final: true, message: `This key is already in use on ${maxDevices} devices. Email the seller to reset it.` };
+    return { ok: true, final: true, message: "Unlocked. Thanks for buying!" };
+  }
+
+  return { CATS, parseCSV, money, monthKey, classify, analyze, sample, verifyLicense };
+})();
+</script>
+
+<script>
+const $ = id => document.getElementById(id);
+let fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" });
+const money = n => fmt.format(n);
+const pct = n => (isFinite(n) ? (n * 100).toFixed(1) + "%" : "–");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const monthName = (k, opts = { month: "long", year: "numeric" }) => { const [y, m] = k.split("-"); return new Date(+y, +m - 1, 1).toLocaleString(undefined, opts); };
+const shortMonth = k => monthName(k, { month: "short" });
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+
+let current = null;
+let currentIsSample = true;
+let currentMode = "sample";
+// The paywall turns on by itself once SALE.productId is filled in; until then the full report is free.
+const paywallOn = () => !!SALE.productId;
+
+const KEY_STORE = "statement-xray-license";
+const store = {
+  get() { try { return localStorage.getItem(KEY_STORE) || ""; } catch { return ""; } },
+  set(v) { try { localStorage.setItem(KEY_STORE, v); } catch { /* private window: unlock lasts this visit */ } },
+  clear() { try { localStorage.removeItem(KEY_STORE); } catch { /* nothing saved */ } },
+};
+let licenseKey = store.get();
+
+function applyLock() {
+  const rep = current;
+  const locked = rep && rep.ok && !licenseKey &&
+    (currentMode === "preview" || (currentMode === "real" && paywallOn()));
+  $("paid").classList.toggle("locked", !!locked);
+  $("paidInner").inert = !!locked;
+  $("unlock").hidden = !locked;
+  $("licenseStatus").hidden = !licenseKey;
+  if (!locked) return;
+  const hit = rep.counts.offsiteOrders;
+  $("teaser").textContent =
+    `Your statements cover ${plural(rep.months.length, "month")} and ${plural(rep.orders.length, "order")}. ` +
+    `The full report shows which months and orders cost you most` +
+    (hit ? `, picks out the ${plural(hit, "order")} Offsite Ads charged you for,` : ",") +
+    ` and gives you totals to paste into your bookkeeping.`;
+}
+
+async function unlock(key) {
+  $("unlockBtn").disabled = true;
+  $("keyMsg").className = "keymsg";
+  $("keyMsg").textContent = "Checking with Gumroad…";
+  const r = await Core.verifyLicense(key, { productId: SALE.productId, maxDevices: SALE.maxDevices, activate: true });
+  $("unlockBtn").disabled = false;
+  $("keyMsg").className = "keymsg " + (r.ok ? "good" : "bad");
+  $("keyMsg").textContent = r.message;
+  if (!r.ok) return;
+  licenseKey = key.trim();
+  store.set(licenseKey);
+  applyLock();
+}
+
+// A saved key unlocks straight away; a quiet re-check relocks it only if Gumroad says it's refunded or invalid.
+async function recheckSavedKey() {
+  if (!licenseKey) return;
+  const r = await Core.verifyLicense(licenseKey, { productId: SALE.productId, activate: false });
+  if (!r.ok && r.final) { licenseKey = ""; store.clear(); applyLock(); }
+}
+
+function statusText(rep, mode) {
+  if (mode === "sample") return "You're looking at a made-up shop. Load your monthly statement CSVs to see your own numbers. They stay on your computer.";
+  if (mode === "preview") return "A made-up shop, shown the way a buyer sees it before paying.";
+  const span = rep.months.length ? (rep.months.length === 1 ? monthName(rep.months[0].key) : `${monthName(rep.months[0].key)} to ${monthName(rep.months[rep.months.length - 1].key)}`) : "";
+  const check = rep.check ? "Totals match your statements' Net column." : `Totals differ from your statements' Net column by ${money(rep.totals.statementNet - rep.totals.kept)}.`;
+  return `${plural(rep.fileCount, "statement")}, ${span}, ${plural(rep.counts.sales, "order")}. ${check}`;
+}
+
+function render(rep, mode) {
+  current = rep;
+  currentIsSample = mode === "sample";
+  currentMode = mode;
+  $("msg").hidden = !rep.problems.length;
+  $("msg").innerHTML = rep.problems.map(esc).join("<br>");
+  $("sampleBtn").hidden = mode === "sample";
+  if (!rep.ok) { $("report").hidden = true; return; }
+  $("report").hidden = false;
+  try { fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: rep.currency }); } catch { /* unknown currency code */ }
+  $("status").textContent = statusText(rep, mode);
+
+  const T = rep.totals;
+  const sold = T.gross - T.refunds;
+  const cats = Core.CATS.filter(c => Math.abs(T.cats[c.key]) >= 0.005).sort((a, b) => T.cats[b.key] - T.cats[a.key]);
+
+  // The answer, as a sentence and one bar
+  const parts = [{ v: T.kept, c: "var(--ink)", t: `You kept ${money(T.kept)}` }];
+  if (T.refunds > 0) parts.push({ v: T.refunds, c: "var(--refund)", t: `Refunded ${money(T.refunds)}` });
+  cats.forEach(c => parts.push({ v: T.cats[c.key], c: "var(--red)", t: `${c.name} ${money(T.cats[c.key])}` }));
+  const whole = parts.reduce((s, p) => s + Math.max(0, p.v), 0) || 1;
+  $("answer").innerHTML = `
+    <h1>Of ${money(T.gross)} in sales, <span class="kept">you kept ${money(T.kept)}.</span></h1>
+    <p class="sub">Etsy deducted <span class="red">${money(T.taken)}</span>, which is ${pct(T.taken / sold)} of what you sold${T.refunds > 0 ? `, and ${money(T.refunds)} went back to buyers as refunds` : ""}. What you kept is before materials and your time.</p>
+    <div class="moneybar" role="img" aria-label="${esc(parts.map(p => p.t).join(", "))}">${parts.filter(p => p.v > 0).map(p => `<span style="flex:${p.v / whole};background:${p.c}" title="${esc(p.t)}"></span>`).join("")}</div>
+    <div class="key"><span><i style="background:var(--ink)"></i>Kept</span>${T.refunds > 0 ? `<span><i style="background:var(--refund)"></i>Refunded</span>` : ""}<span><i style="background:var(--red)"></i>Deducted by Etsy, split by type below</span></div>`;
+
+  // Ledger
+  const max = Math.max(...cats.map(c => T.cats[c.key]), 0.01);
+  $("ledgerTitle").textContent = `Where the ${money(T.taken)} went`;
+  $("breakdown").innerHTML = cats.map(c => {
+    const v = T.cats[c.key];
+    return `<div class="lrow"><span class="what">${c.name}<small>${c.note}</small></span>
+      <span class="bar"><span style="width:${Math.max(0, v / max * 100)}%"></span></span>
+      <span class="amt">${money(v)}</span><span class="pct">${pct(v / T.taken)}</span></div>`;
+  }).join("") + `<div class="lrow total"><span class="what">Total deducted</span><span class="bar" style="visibility:hidden"></span><span class="amt">${money(T.taken)}</span><span class="pct">${pct(T.taken / sold)} of sales</span></div>`;
+
+  // Notes
+  const notes = [];
+  if (rep.counts.offsiteOrders) notes.push(`<b>Offsite Ads charged you on ${plural(rep.counts.offsiteOrders, "order")}, ${money(rep.offsite.total)} in all.</b> That's about ${pct(rep.offsite.avgShare)} of each of those orders on top of the usual fees, and it often lands days after the sale.`);
+  if (T.cats.etsyAds > 0) notes.push(`<b>Etsy Ads cost ${money(T.cats.etsyAds)}</b>, or ${pct(T.cats.etsyAds / sold)} of sales. Check it against the orders your Etsy Ads dashboard credits to ads.`);
+  if (rep.counts.listing) notes.push(`<b>You paid ${plural(rep.counts.listing, "listing fee")}.</b> Every sale renews its listing automatically, so each order adds one more.`);
+  if (rep.months.length > 1) {
+    const rate = m => Core.CATS.reduce((s, c) => s + m.cats[c.key], 0) / Math.max(m.gross - m.refunds, 0.01);
+    const worst = rep.months.reduce((a, b) => (rate(b) > rate(a) ? b : a));
+    notes.push(`<b>${monthName(worst.key)} was your most expensive month.</b> Etsy took ${pct(rate(worst))} of sales, against ${pct(T.taken / sold)} overall.`);
+  }
+  $("insights").innerHTML = notes.map(n => `<li>${n}</li>`).join("") || `<li>Nothing unusual stood out.</li>`;
+
+  drawChart(rep);
+
+  const top = rep.orders.slice(0, 8);
+  $("orders").innerHTML = `<thead><tr><th>Order</th><th class="r">Sale</th><th class="r">Deducted</th><th class="r">Kept</th><th class="r">Share taken</th></tr></thead><tbody>` +
+    (top.length ? top.map(o => `<tr><td>#${esc(o.id)}${o.offsite > 0 ? `<span class="flag">Offsite Ads</span>` : ""}${o.refund > 0 ? `<span class="flag quiet">refunded ${money(o.refund)}</span>` : ""}<span class="item">${esc(o.item || "")}</span></td>
+      <td class="r">${money(o.sale)}</td><td class="r">${money(o.fees)}</td><td class="r">${money(o.kept)}</td><td class="r taken">${pct(o.share)}</td></tr>`).join("")
+      : `<tr><td colspan="5">No orders with an order number were found.</td></tr>`) + `</tbody>`;
+  applyLock();
+}
+
+function drawChart(rep) {
+  const svg = $("chart"), tip = $("tip");
+  const ms = rep.months;
+  if (!ms.length) { svg.innerHTML = ""; return; }
+  const total = m => Core.CATS.reduce((s, c) => s + Math.max(0, m.cats[c.key]), 0);
+  const W = 720, H = 250, Tp = 26, B = 46;
+  const yMax = Math.max(...ms.map(total), 1);
+  const band = W / ms.length, bw = Math.min(64, band * 0.5);
+  const y = v => Tp + (H - Tp - B) * (1 - v / yMax);
+  let out = `<line x1="0" x2="${W}" y1="${H - B}" y2="${H - B}" stroke="var(--ink)" stroke-width="1"/>`;
+  ms.forEach((m, i) => {
+    const v = total(m), x = band * i + (band - bw) / 2, top = y(v), h = H - B - top;
+    const r = Math.min(4, h, bw / 2);
+    out += `<path d="M${x},${H - B}V${top + r}Q${x},${top} ${x + r},${top}H${x + bw - r}Q${x + bw},${top} ${x + bw},${top + r}V${H - B}Z" fill="var(--red)"/>`;
+    out += `<text class="val" x="${x + bw / 2}" y="${top - 8}" text-anchor="middle">${money(v)}</text>`;
+    out += `<text x="${x + bw / 2}" y="${H - B + 18}" text-anchor="middle">${shortMonth(m.key)}</text>`;
+    out += `<text x="${x + bw / 2}" y="${H - B + 34}" text-anchor="middle">${pct(v / Math.max(m.gross - m.refunds, 0.01))} of sales</text>`;
+    out += `<rect class="hit" data-i="${i}" x="${band * i}" y="0" width="${band}" height="${H}" fill="transparent"/>`;
+  });
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = out;
+  svg.querySelectorAll(".hit").forEach(el => {
+    const show = () => {
+      const m = ms[+el.dataset.i];
+      tip.innerHTML = `<div class="t">${monthName(m.key)}</div>` +
+        Core.CATS.filter(c => m.cats[c.key] > 0.004).sort((a, b) => m.cats[b.key] - m.cats[a.key])
+          .map(c => `<div class="row"><span>${c.name}</span><span>${money(m.cats[c.key])}</span></div>`).join("") +
+        `<div class="row" style="margin-top:6px;opacity:.7"><span>Sales</span><span>${money(m.gross)}</span></div>`;
+      tip.hidden = false;
+      const wrap = $("chartWrap"), wr = wrap.getBoundingClientRect(), r = el.getBoundingClientRect();
+      let left = r.left - wr.left + wrap.scrollLeft + r.width / 2 + 40;
+      if (left + 220 > wr.width + wrap.scrollLeft) left = r.left - wr.left + wrap.scrollLeft + r.width / 2 - 260;
+      tip.style.left = Math.max(0, left) + "px";
+      tip.style.top = "8px";
+    };
+    el.addEventListener("mouseenter", show);
+    el.addEventListener("click", show);
+    el.addEventListener("mouseleave", () => (tip.hidden = true));
+  });
+}
+
+async function loadFiles(list) {
+  const files = await Promise.all([...list].filter(f => /\.csv$/i.test(f.name) || f.type === "text/csv").map(f => f.text().then(text => ({ name: f.name, text }))));
+  if (!files.length) { $("msg").hidden = false; $("msg").textContent = "Those weren't CSV files. Download the CSV version of each monthly statement from Etsy."; return; }
+  render(Core.analyze(files), "real");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+const example = () => Core.analyze([{ name: "example.csv", text: Core.sample() }]);
+function loadSample() { render(example(), "sample"); }
+// Open the page with #paywall to see what buyers see before unlocking (handy for listing screenshots).
+function loadLockedPreview() { render(example(), "preview"); }
+
+$("file").addEventListener("change", e => loadFiles(e.target.files));
+$("fileLabel").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
+$("sampleBtn").addEventListener("click", loadSample);
+let dragDepth = 0;
+document.addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; document.body.classList.add("dropping"); });
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dropping"); } });
+document.addEventListener("drop", e => { e.preventDefault(); dragDepth = 0; document.body.classList.remove("dropping"); loadFiles(e.dataTransfer.files); });
+
+$("copyBtn").addEventListener("click", () => {
+  if (!current || !current.ok) return;
+  const T = current.totals;
+  const lines = [["Category", "Amount"], ["Sales", T.gross], ["Refunds", -T.refunds],
+    ...Core.CATS.map(c => [c.name, -T.cats[c.key]]), ["Other adjustments", T.adjust], ["Kept", T.kept]];
+  const text = lines.map(([a, b]) => `${a}\t${typeof b === "number" ? b.toFixed(2) : b}`).join("\n");
+  const done = ok => { $("copyMsg").textContent = ok ? "Copied. Paste it into a spreadsheet." : "Your browser blocked copying. Select the totals above instead."; };
+  try { navigator.clipboard.writeText(text).then(() => done(true), () => done(false)); } catch { done(false); }
+});
+
+$("buyLink").href = SALE.buyUrl;
+$("price").textContent = SALE.price;
+$("unlock").addEventListener("submit", e => { e.preventDefault(); unlock($("licenseKey").value); });
+$("forgetKey").addEventListener("click", () => { licenseKey = ""; store.clear(); applyLock(); });
+
+if (location.hash === "#paywall" && !licenseKey) loadLockedPreview(); else loadSample();
+window.addEventListener("hashchange", () => { if (location.hash === "#paywall" && !licenseKey && currentIsSample) loadLockedPreview(); });
+recheckSavedKey();
+</script>
+
+</body>
+</html>
