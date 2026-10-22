@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # The project is a single static page with no package manager, lockfile,
+      # lint, typecheck or test scripts, so there are no dependencies to install or cache.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check inline JavaScript syntax
+        run: node .github/scripts/check-inline-js.mjs index.html
+
+      - name: Build docs/index.html
+        run: sh build.sh
+
+      - name: Check docs/index.html is up to date with index.html
+        run: git diff --exit-code -- docs/ || { echo "::error::docs/index.html is stale. Run ./build.sh and commit the result."; exit 1; }
+
+      # Picks up the test script that the claude/night-* PRs add (once rebased).
+      - name: Run tests if a test script exists
+        run: |
+          if [ -f package.json ] && node -e 'process.exit(require("./package.json").scripts?.test?0:1)'; then
+            if [ -f package-lock.json ]; then npm ci; else npm install; fi
+            npm test
+          else
+            echo "No test script found; skipping."
+          fi
