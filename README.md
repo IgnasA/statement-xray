@@ -1,5 +1,7 @@
 # Statement X-Ray
 
+[![CI](https://github.com/IgnasA/statement-xray/actions/workflows/ci.yml/badge.svg)](https://github.com/IgnasA/statement-xray/actions/workflows/ci.yml)
+
 See exactly where your Etsy money went. Statement X-Ray reads the monthly statement CSVs that
 Etsy sellers download from **Shop Manager → Finances → Monthly statements**. It shows what you
 kept, what Etsy deducted, a breakdown by fee type (transaction, processing, listing, Offsite Ads,
