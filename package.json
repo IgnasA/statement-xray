@@ -1,0 +1,11 @@
+{
+  "name": "statement-xray",
+  "private": true,
+  "description": "Single-page Etsy statement fee report. See SETUP.md.",
+  "scripts": {
+    "build": "./build.sh",
+    "lint": "node test/lint.js",
+    "test": "node --test test/*.test.js",
+    "test:e2e": "node test/e2e.js"
+  }
+}

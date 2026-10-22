@@ -249,16 +249,38 @@ const Core = (() => {
     { key: "vat", name: "VAT on fees", note: "Tax Etsy adds to its own fees", color: "var(--s8)" },
   ];
 
+  // File bytes -> text. Etsy writes UTF-8; Excel can re-save a statement as UTF-16 or Windows-1252.
+  function decode(buf) {
+    const b = ArrayBuffer.isView(buf) ? new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) : new Uint8Array(buf);
+    if (b[0] === 0xff && b[1] === 0xfe) return new TextDecoder("utf-16le").decode(b.subarray(2));
+    if (b[0] === 0xfe && b[1] === 0xff) return new TextDecoder("utf-16be").decode(b.subarray(2));
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(b); }
+    catch { return new TextDecoder("windows-1252").decode(b); }
+  }
+
+  // Etsy separates with commas; Excel re-saves with semicolons or tabs in some locales. The header line decides.
+  function delimiter(text) {
+    const n = { ",": 0, ";": 0, "\t": 0 }; let q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (c === '"') q = !q;
+      else if (!q && (c === "\n" || c === "\r")) { if (n[","] + n[";"] + n["\t"]) break; }
+      else if (!q && c in n) n[c]++;
+    }
+    return n[";"] > n[","] && n[";"] >= n["\t"] ? ";" : n["\t"] > n[","] ? "\t" : ",";
+  }
+
   function parseCSV(text) {
     const rows = []; let row = []; let field = ""; let q = false;
     text = text.replace(/^﻿/, "");
+    const sep = delimiter(text);
     for (let i = 0; i < text.length; i++) {
       const c = text[i];
       if (q) {
         if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; }
         else field += c;
       } else if (c === '"') q = true;
-      else if (c === ",") { row.push(field); field = ""; }
+      else if (c === sep) { row.push(field); field = ""; }
       else if (c === "\n" || c === "\r") {
         if (c === "\r" && text[i + 1] === "\n") i++;
         row.push(field); field = "";
@@ -271,15 +293,16 @@ const Core = (() => {
     return rows;
   }
 
-  // "$1,234.56", "-€2.00", "(1.20)", "--", "1.234,56 €" -> number
+  // "$1,234.56", "-€2.00", "(1.20)", "--", "1.234,56 €", "12.345.678", "−3.10" -> number
   function money(s) {
     if (s == null) return 0;
-    s = String(s).trim();
+    s = String(s).trim().replace(/[\u2012-\u2015\u2212\uFE63\uFF0D]/g, "-"); // dashes and minus signs spreadsheets use
     if (!s || /^-+$/.test(s)) return 0;
     const neg = /^-|^\(|\)$|-$/.test(s) || /^[^\d]*-/.test(s);
     let d = s.replace(/[^\d.,]/g, "");
     if (!d) return 0;
     if (/,\d{1,2}$/.test(d)) d = d.replace(/\./g, "").replace(",", ".");
+    else if (!d.includes(",") && d.indexOf(".") !== d.lastIndexOf(".")) d = d.replace(/\./g, ""); // dots as thousands separators
     else d = d.replace(/,/g, "");
     const n = parseFloat(d);
     if (!isFinite(n)) return 0;
@@ -287,18 +310,21 @@ const Core = (() => {
   }
 
   const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+  const ym = (y, mo) => (mo >= 1 && mo <= 12 ? `${y}-${String(mo).padStart(2, "0")}` : null);
   function monthKey(s) {
     s = String(s || "").trim().slice(0, 64); // dates are short; bounding the length keeps the regexes below fast
     let m = s.match(/^(\d{4})-(\d{1,2})/);
-    if (m) return `${m[1]}-${m[2].padStart(2, "0")}`;
+    if (m) return ym(m[1], +m[2]);
     m = s.match(/([A-Za-z]{3})[A-Za-z]*\.?\s+\d{1,2},?\s+(\d{4})/) || s.match(/\d{1,2}\s+([A-Za-z]{3})[A-Za-z]*\.?,?\s+(\d{4})/);
-    if (m && MONTHS[m[1].toLowerCase()] != null) return `${m[2]}-${String(MONTHS[m[1].toLowerCase()] + 1).padStart(2, "0")}`;
-    m = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})$/);
+    if (m && MONTHS[m[1].toLowerCase()] != null) return ym(m[2], MONTHS[m[1].toLowerCase()] + 1);
+    m = s.match(/^(\d{1,2})([\/.-])(\d{1,2})\2(\d{4}|\d{2})(?![\d\/.-])/); // a time may follow
     if (m) {
-      const y = m[3].length === 2 ? "20" + m[3] : m[3];
-      const a = +m[1], b = +m[2];
-      const month = a > 12 ? b : a; // US order unless the first part can't be a month
-      return `${y}-${String(month).padStart(2, "0")}`;
+      const y = m[4].length === 2 ? "20" + m[4] : m[4];
+      const a = +m[1], b = +m[3];
+      // Dotted dates are day-first; otherwise US order unless the first part can't be a month.
+      const dayFirst = m[2] === "." || a > 12;
+      const day = dayFirst ? a : b;
+      return day >= 1 && day <= 31 ? ym(y, dayFirst ? b : a) : null;
     }
     return null;
   }
@@ -340,10 +366,11 @@ const Core = (() => {
 
   // files: [{name, text}] -> report
   function analyze(files) {
-    const seen = new Set();
+    const seen = new Map(); // row -> most copies of it found in any one file
     const problems = [];
     const rowsByCur = {};
     let fileCount = 0;
+    const nRows = n => (n === 1 ? "1 row" : `${n} rows`);
     for (const f of files) {
       const rows = parseCSV(f.text);
       if (!rows.length) { problems.push(`${f.name} is empty.`); continue; }
@@ -352,25 +379,43 @@ const Core = (() => {
         problems.push(`${f.name} doesn't look like an Etsy monthly statement (no Date, Type and Net columns).`);
         continue;
       }
+      if (rows.length === 1) { problems.push(`${f.name} has no transactions in it.`); continue; }
       fileCount++;
+      let width = rows[0].length;
+      while (width > 1 && rows[0][width - 1].trim() === "") width--;
+      const inFile = new Map();
+      let bad = 0, undated = 0;
       for (const r of rows.slice(1)) {
-        const key = r.join("\u0001");
-        if (seen.has(key)) continue; // same row from a file added twice
-        seen.add(key);
+        // Missing or extra filled-in fields mean the columns have shifted (an unquoted comma, a cut-off line).
+        if (r.length < width || r.slice(width).some(v => v.trim() !== "")) { bad++; continue; }
+        // Identical rows within one file are real (e.g. one listing renewed three times), but a row
+        // that also appears in another file (the same statement added twice) is only counted once.
+        const key = r.slice(0, width).join("\u0001");
+        const copies = (inFile.get(key) || 0) + 1;
+        inFile.set(key, copies);
+        if (copies <= (seen.get(key) || 0)) continue;
+        seen.set(key, copies);
         const get = i => (i >= 0 ? r[i] : "");
         const amount = money(get(col.amount));
         const fees = money(get(col.fees));
         const netRaw = get(col.net);
         const net = col.net >= 0 && !/^\s*-*\s*$/.test(netRaw) ? money(netRaw) : amount + fees;
         const cur = (get(col.currency) || "").trim().toUpperCase() || "USD";
+        const month = monthKey(get(col.date));
+        if (!month) undated++;
         (rowsByCur[cur] = rowsByCur[cur] || []).push({
-          month: monthKey(get(col.date)), type: get(col.type), title: get(col.title), info: get(col.info),
+          month, type: get(col.type), title: get(col.title), info: get(col.info),
           amount, fees, net, kind: classify(get(col.type), get(col.title)),
         });
       }
+      if (bad) problems.push(`${nRows(bad)} in ${f.name} didn't have the right number of columns and ${bad === 1 ? "was" : "were"} left out.`);
+      if (undated) problems.push(`${nRows(undated)} in ${f.name} had a date that couldn't be read. ${undated === 1 ? "It is" : "They are"} in the totals but not the monthly chart.`);
     }
     const curs = Object.keys(rowsByCur).sort((a, b) => rowsByCur[b].length - rowsByCur[a].length);
-    if (!curs.length) return { ok: false, problems };
+    if (!curs.length) {
+      if (!problems.length) problems.push(files.length ? "No transactions were found in those files." : "No files were loaded.");
+      return { ok: false, problems };
+    }
     const currency = curs[0];
     if (curs.length > 1) problems.push(`Rows in ${curs.slice(1).join(", ")} were left out; this report is in ${currency}.`);
     const rows = rowsByCur[currency];
@@ -501,7 +546,7 @@ const Core = (() => {
     return { ok: true, final: true, message: "Unlocked. Thanks for buying!" };
   }
 
-  return { CATS, parseCSV, money, monthKey, classify, analyze, sample, verifyLicense };
+  return { CATS, decode, parseCSV, money, monthKey, classify, analyze, sample, verifyLicense };
 })();
 </script>
 
@@ -572,7 +617,7 @@ function statusText(rep, mode) {
   if (mode === "preview") return "A made-up shop, shown the way a buyer sees it before paying.";
   const span = rep.months.length ? (rep.months.length === 1 ? monthName(rep.months[0].key) : `${monthName(rep.months[0].key)} to ${monthName(rep.months[rep.months.length - 1].key)}`) : "";
   const check = rep.check ? "Totals match your statements' Net column." : `Totals differ from your statements' Net column by ${money(rep.totals.statementNet - rep.totals.kept)}.`;
-  return `${plural(rep.fileCount, "statement")}, ${span}, ${plural(rep.counts.sales, "order")}. ${check}`;
+  return `${[plural(rep.fileCount, "statement"), span, plural(rep.counts.sales, "order")].filter(Boolean).join(", ")}. ${check}`;
 }
 
 function render(rep, mode) {
@@ -584,7 +629,11 @@ function render(rep, mode) {
   $("sampleBtn").hidden = mode === "sample";
   if (!rep.ok) { $("report").hidden = true; return; }
   $("report").hidden = false;
-  try { fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: rep.currency }); } catch { /* unknown currency code */ }
+  try { fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: rep.currency }); }
+  catch { // not an ISO currency code: plain numbers, so the last report's symbol isn't reused
+    const plainFmt = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    fmt = { format: n => `${plainFmt.format(n)} ${rep.currency}` };
+  }
   $("status").textContent = statusText(rep, mode);
 
   const T = rep.totals;
@@ -677,13 +726,25 @@ function drawChart(rep) {
 
 // Monthly statements are a few hundred KB at most; anything far bigger would only freeze the tab.
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
+function showMsg(text) { $("msg").hidden = false; $("msg").textContent = text; }
+
 async function loadFiles(list) {
-  const csvs = [...list].filter(f => /\.csv$/i.test(f.name) || f.type === "text/csv");
+  list = [...(list || [])];
+  const csvs = list.filter(f => /\.csv$/i.test(f.name) || f.type === "text/csv");
+  if (!csvs.length) { if (list.length) showMsg("Those weren't CSV files. Download the CSV version of each monthly statement from Etsy."); return; }
   const tooBig = csvs.filter(f => f.size > MAX_FILE_BYTES);
-  if (tooBig.length) { $("msg").hidden = false; $("msg").textContent = `${tooBig.map(f => f.name).join(", ")} ${tooBig.length === 1 ? "is" : "are"} too large to be an Etsy monthly statement.`; return; }
-  const files = await Promise.all(csvs.map(f => f.text().then(text => ({ name: f.name, text }))));
-  if (!files.length) { $("msg").hidden = false; $("msg").textContent = "Those weren't CSV files. Download the CSV version of each monthly statement from Etsy."; return; }
-  render(Core.analyze(files), "real");
+  if (tooBig.length) { showMsg(`${tooBig.map(f => f.name).join(", ")} ${tooBig.length === 1 ? "is" : "are"} too large to be an Etsy monthly statement.`); return; }
+  let rep;
+  try {
+    const files = await Promise.all(csvs.map(f => f.arrayBuffer().then(buf => ({ name: f.name, text: Core.decode(buf) }))));
+    rep = Core.analyze(files);
+  } catch (err) {
+    console.error(err);
+    showMsg("Those files couldn't be read. Download the statements from Etsy again and load the CSV files straight from your computer.");
+    return;
+  }
+  rep.problems.unshift(...list.filter(f => !csvs.includes(f)).map(f => `${f.name} was left out because it isn't a CSV file.`));
+  render(rep, "real");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 const example = () => Core.analyze([{ name: "example.csv", text: Core.sample() }]);
@@ -691,14 +752,15 @@ function loadSample() { render(example(), "sample"); }
 // Open the page with #paywall to see what buyers see before unlocking (handy for listing screenshots).
 function loadLockedPreview() { render(example(), "preview"); }
 
-$("file").addEventListener("change", e => loadFiles(e.target.files));
+// Clear the input so picking the same file again (say, after going back to the example) still loads it.
+$("file").addEventListener("change", e => { const picked = [...e.target.files]; e.target.value = ""; loadFiles(picked); });
 $("fileLabel").addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
 $("sampleBtn").addEventListener("click", loadSample);
 let dragDepth = 0;
 document.addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; document.body.classList.add("dropping"); });
 document.addEventListener("dragover", e => e.preventDefault());
 document.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dropping"); } });
-document.addEventListener("drop", e => { e.preventDefault(); dragDepth = 0; document.body.classList.remove("dropping"); loadFiles(e.dataTransfer.files); });
+document.addEventListener("drop", e => { e.preventDefault(); dragDepth = 0; document.body.classList.remove("dropping"); loadFiles(e.dataTransfer && e.dataTransfer.files); });
 
 $("copyBtn").addEventListener("click", () => {
   if (!current || !current.ok) return;
