@@ -37,12 +37,12 @@ character set and viewport tags itself. Your host won't, so build the hostable c
 ./build.sh
 ```
 
-That writes `docs/index.html`. Run it again whenever you change `index.html`.
+That writes `docs/index.html`, which GitHub Pages serves. Run it again whenever you change `index.html`.
 
 To check the numbers still add up after a change, run the tests (Node 20 or newer, nothing to install):
 
 ```bash
-node --test tests/*.test.mjs
+npm test
 ```
 
 They also fail if `docs/index.html` is out of date, as a reminder to run `./build.sh`.
