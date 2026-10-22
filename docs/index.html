@@ -126,6 +126,8 @@ td .flag { color: var(--red); font-size: 13px; font-weight: 500; margin-left: 6p
 td .flag.quiet { color: var(--muted); }
 td.taken { color: var(--red); font-weight: 700; }
 
+.exports { display: flex; gap: 10px 12px; align-items: center; flex-wrap: wrap; }
+
 /* Paywall */
 .paid { display: grid; gap: 32px; }
 .paid-inner { display: grid; gap: 56px; }
@@ -198,7 +200,11 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule)
           <div class="table-wrap"><table id="orders"></table></div>
         </section>
 
-        <div><button class="btn plain" id="copyBtn" type="button">Copy totals for my bookkeeping</button> <span class="status" id="copyMsg"></span></div>
+        <div class="exports">
+          <button class="btn plain" id="copyBtn" type="button">Copy totals for my bookkeeping</button>
+          <button class="btn plain" id="csvBtn" type="button">Download month by month (CSV)</button>
+          <span class="status" id="copyMsg" role="status"></span>
+        </div>
       </div>
 
       <form class="unlock" id="unlock" hidden>
@@ -433,7 +439,7 @@ const Core = (() => {
     const months = {};
     const orders = {};
     const counts = { listing: 0, offsiteOrders: new Set(), sales: 0 };
-    const M = k => (months[k] = months[k] || { gross: 0, refunds: 0, cats: zero() });
+    const M = k => (months[k] = months[k] || { gross: 0, refunds: 0, adjust: 0, cats: zero() });
     const O = id => (orders[id] = orders[id] || { id, sale: 0, refund: 0, fees: 0, item: "", offsite: 0 });
 
     for (const r of rows) {
@@ -452,7 +458,7 @@ const Core = (() => {
         t.cats.processing += credit; m.cats.processing += credit;
         if (id) { const o = O(id); o.refund += -r.amount; o.fees += credit; }
       } else if (r.kind === "adjust") {
-        t.adjust += r.net;
+        t.adjust += r.net; m.adjust += r.net;
       } else {
         const cost = -r.net;
         t.cats[r.kind] += cost; m.cats[r.kind] += cost;
@@ -474,6 +480,7 @@ const Core = (() => {
     return {
       ok: true, problems, currency, fileCount, totals: { ...t, taken, kept },
       months: Object.keys(months).filter(k => k !== "unknown").sort().map(k => ({ key: k, ...months[k] })),
+      undated: months.unknown || null, // rows whose date couldn't be read
       orders: orderList,
       counts: { listing: counts.listing, sales: counts.sales, offsiteOrders: counts.offsiteOrders.size },
       offsite: {
@@ -482,6 +489,28 @@ const Core = (() => {
       },
       check: Math.abs(t.statementNet - kept) < 0.02,
     };
+  }
+
+  // One row per line of the bookkeeping summary, one column per month, then a total.
+  // Deductions and refunds are negative so each column adds up to what you kept.
+  function monthlyCSV(rep) {
+    const cols = rep.months.map(m => ({ name: m.key, ...m }));
+    if (rep.undated) cols.push({ name: "Undated", ...rep.undated });
+    const T = rep.totals;
+    cols.push({ name: "Total", gross: T.gross, refunds: T.refunds, adjust: T.adjust, cats: T.cats });
+    const taken = c => CATS.reduce((s, k) => s + c.cats[k.key], 0);
+    const lines = [
+      ["Sales", c => c.gross],
+      ["Refunds", c => -c.refunds],
+      ...CATS.map(k => [k.name, c => -c.cats[k.key]]),
+      ["Total deducted by Etsy", c => -taken(c)],
+      ["Other adjustments", c => c.adjust],
+      ["Kept", c => c.gross - c.refunds - taken(c) + c.adjust],
+    ];
+    const cell = v => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const num = n => (Math.abs(n) < 0.005 ? 0 : n).toFixed(2);
+    return [[`Category (${rep.currency})`, ...cols.map(c => c.name)], ...lines.map(([name, f]) => [name, ...cols.map(c => num(f(c)))])]
+      .map(r => r.map(cell).join(",")).join("\r\n") + "\r\n";
   }
 
   function sample() {
@@ -554,7 +583,7 @@ const Core = (() => {
     return { ok: true, final: true, message: "Unlocked. Thanks for buying!" };
   }
 
-  return { CATS, decode, parseCSV, money, monthKey, classify, analyze, sample, verifyLicense };
+  return { CATS, decode, parseCSV, money, monthKey, classify, analyze, monthlyCSV, sample, verifyLicense };
 })();
 </script>
 
@@ -596,7 +625,7 @@ function applyLock() {
     `Your statements cover ${plural(rep.months.length, "month")} and ${plural(rep.orders.length, "order")}. ` +
     `The full report shows which months and orders cost you most` +
     (hit ? `, picks out the ${plural(hit, "order")} Offsite Ads charged you for,` : ",") +
-    ` and gives you totals to paste into your bookkeeping.`;
+    ` and gives you totals for your bookkeeping, month by month.`;
 }
 
 async function unlock(key) {
@@ -778,6 +807,26 @@ $("copyBtn").addEventListener("click", () => {
   const text = lines.map(([a, b]) => `${a}\t${typeof b === "number" ? b.toFixed(2) : b}`).join("\n");
   const done = ok => { $("copyMsg").textContent = ok ? "Copied. Paste it into a spreadsheet." : "Your browser blocked copying. Select the totals above instead."; };
   try { navigator.clipboard.writeText(text).then(() => done(true), () => done(false)); } catch { done(false); }
+});
+
+// Named after the months it covers, e.g. etsy-fees-2026-08-to-2026-10.csv
+function csvFileName(rep) {
+  const ks = rep.months.map(m => m.key);
+  if (!ks.length) return "etsy-fees.csv";
+  return ks.length === 1 ? `etsy-fees-${ks[0]}.csv` : `etsy-fees-${ks[0]}-to-${ks[ks.length - 1]}.csv`;
+}
+
+$("csvBtn").addEventListener("click", () => {
+  if (!current || !current.ok) return;
+  try {
+    const url = URL.createObjectURL(new Blob([Core.monthlyCSV(current)], { type: "text/csv" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: csvFileName(current) });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    $("copyMsg").textContent = "Downloaded. It opens in Excel, Numbers or Google Sheets.";
+  } catch {
+    $("copyMsg").textContent = "Your browser blocked the download. Use Copy totals instead.";
+  }
 });
 
 $("buyLink").href = SALE.buyUrl;

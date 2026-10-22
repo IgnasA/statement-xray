@@ -1,8 +1,9 @@
 # Statement X-Ray: going live
 
 The whole tool is one file, `index.html`. Free visitors see their totals and the
-"Where it went" breakdown. The monthly chart, costliest orders, notes and the
-copy-to-bookkeeping button unlock with a Gumroad license key.
+"Where it went" breakdown. The monthly chart, costliest orders, notes, the
+copy-to-bookkeeping button and the month-by-month CSV download unlock with a
+Gumroad license key.
 
 ## 1. Create the product on Gumroad
 
@@ -38,6 +39,14 @@ character set and viewport tags itself. Your host won't, so build the hostable c
 
 That writes `docs/index.html`, which GitHub Pages serves. Run it again whenever you change `index.html`.
 
+To check the numbers still add up after a change, run the tests (Node 20 or newer, nothing to install):
+
+```bash
+npm test
+```
+
+They also fail if `docs/index.html` is out of date, as a reminder to run `./build.sh`.
+
 Any static host works, because there is no server. Two easy options:
 
 - **Netlify Drop:** go to app.netlify.com/drop and drag the `docs` folder onto the page. You get a URL straight away and can rename it in site settings.
@@ -69,6 +78,14 @@ Gumroad, so keys can't be checked there.
 - The lock runs in the visitor's browser, so a technical person could get around it with
   developer tools. For a $9 tool aimed at shop owners that's an acceptable trade for having
   no server to run.
+
+## The month-by-month CSV
+
+"Download month by month (CSV)" saves a file such as `etsy-fees-2026-08-to-2026-10.csv`:
+one row per line of the bookkeeping summary (sales, refunds, each kind of Etsy fee, total
+deducted, other adjustments, kept), one column per month, then a Total column. Refunds and
+deductions are negative, so each column adds up to what was kept. Rows whose date couldn't be
+read get their own "Undated" column, so the months always add up to the total.
 
 ## Listing screenshots
 

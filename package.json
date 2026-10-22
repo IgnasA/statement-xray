@@ -5,7 +5,7 @@
   "scripts": {
     "build": "./build.sh",
     "lint": "node test/lint.js",
-    "test": "node --test test/*.test.js",
+    "test": "node --test test/*.test.js tests/*.test.mjs",
     "test:e2e": "node test/e2e.js"
   }
 }
