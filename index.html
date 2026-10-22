@@ -312,7 +312,7 @@ const Core = (() => {
   const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
   const ym = (y, mo) => (mo >= 1 && mo <= 12 ? `${y}-${String(mo).padStart(2, "0")}` : null);
   function monthKey(s) {
-    s = String(s || "").trim();
+    s = String(s || "").trim().slice(0, 64); // dates are short; bounding the length keeps the regexes below fast
     let m = s.match(/^(\d{4})-(\d{1,2})/);
     if (m) return ym(m[1], +m[2]);
     m = s.match(/([A-Za-z]{3})[A-Za-z]*\.?\s+\d{1,2},?\s+(\d{4})/) || s.match(/\d{1,2}\s+([A-Za-z]{3})[A-Za-z]*\.?,?\s+(\d{4})/);
@@ -555,7 +555,7 @@ const $ = id => document.getElementById(id);
 let fmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" });
 const money = n => fmt.format(n);
 const pct = n => (isFinite(n) ? (n * 100).toFixed(1) + "%" : "–");
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const monthName = (k, opts = { month: "long", year: "numeric" }) => { const [y, m] = k.split("-"); return new Date(+y, +m - 1, 1).toLocaleString(undefined, opts); };
 const shortMonth = k => monthName(k, { month: "short" });
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -724,12 +724,16 @@ function drawChart(rep) {
   });
 }
 
+// Monthly statements are a few hundred KB at most; anything far bigger would only freeze the tab.
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
 function showMsg(text) { $("msg").hidden = false; $("msg").textContent = text; }
 
 async function loadFiles(list) {
   list = [...(list || [])];
   const csvs = list.filter(f => /\.csv$/i.test(f.name) || f.type === "text/csv");
   if (!csvs.length) { if (list.length) showMsg("Those weren't CSV files. Download the CSV version of each monthly statement from Etsy."); return; }
+  const tooBig = csvs.filter(f => f.size > MAX_FILE_BYTES);
+  if (tooBig.length) { showMsg(`${tooBig.map(f => f.name).join(", ")} ${tooBig.length === 1 ? "is" : "are"} too large to be an Etsy monthly statement.`); return; }
   let rep;
   try {
     const files = await Promise.all(csvs.map(f => f.arrayBuffer().then(buf => ({ name: f.name, text: Core.decode(buf) }))));

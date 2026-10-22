@@ -1,0 +1,4 @@
+# GitHub Pages serves this folder as the live site. Keep the project docs off it.
+exclude:
+  - SECURITY_REVIEW.md
+  - ARCHITECTURE.md
